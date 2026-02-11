@@ -1,38 +1,34 @@
-package me.alpha432.oyvey.features.modules.combat;
+// src/main/java/com/grok/hitboxexpander/mixin/EntityMixin.java
+package com.grok.hitboxexpander.mixin;
 
-import com.google.common.eventbus.Subscribe;
-import me.alpha432.oyvey.event.impl.PacketEvent;
-import me.alpha432.oyvey.features.modules.Module;
-import me.alpha432.oyvey.util.models.Timer;
+import com.grok.hitboxexpander.HitboxExpander;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityPose;
 import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.decoration.EndCrystalEntity;
-import net.minecraft.network.packet.c2s.play.PlayerInteractEntityC2SPacket;
-import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
+import net.minecraft.util.math.Vec3d;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-public class Criticals extends Module {
-    private final Timer timer = new Timer();
-    public Criticals() {
-        super("Criticals", "Makes you do critical hits", Category.COMBAT, true, false, false);
-    }
-    @Subscribe private void onPacketSend(PacketEvent.Send event) {
-        if (event.getPacket() instanceof PlayerInteractEntityC2SPacket packet && packet.type.getType() == PlayerInteractEntityC2SPacket.InteractType.ATTACK) {
-            Entity entity = mc.world.getEntityById(packet.entityId);
-            if (entity == null
-                    || entity instanceof EndCrystalEntity
-                    || !mc.player.isOnGround()
-                    || !(entity instanceof LivingEntity)
-                    || !timer.passedMs(0)) return;
+@Mixin(Entity.class)
+public class EntityMixin {
+    @Inject(method = "getDimensions", at = @At("RETURN"), cancellable = true)
+    private void modifyDimensions(EntityPose pose, CallbackInfoReturnable<Vec3d> cir) {
+        if (!HitboxExpander.enabled) return;
 
-            boolean bl = mc.player.horizontalCollision;
-            mc.player.networkHandler.sendPacket(new PlayerMoveC2SPacket.PositionAndOnGround(mc.player.getX(), mc.player.getY() + (double) 0.1f, mc.player.getZ(), false, bl));
-            mc.player.networkHandler.sendPacket(new PlayerMoveC2SPacket.PositionAndOnGround(mc.player.getX(), mc.player.getY(), mc.player.getZ(), false, bl));
-            mc.player.addCritParticles(entity);
-            timer.reset();
+        Entity self = (Entity) (Object) this;
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (self instanceof LivingEntity && self != mc.player && mc.world != null && mc.world.getEntityById(self.getId()) == self) {
+            Vec3d original = cir.getReturnValue();
+            double expand = HitboxExpander.expandAmount;
+            // Expand width/depth (x/z), keep height (y)
+            cir.setReturnValue(new Vec3d(
+                original.x + expand * 2,
+                original.y,
+                original.z + expand * 2
+            ));
         }
-    }
-
-    @Override public String getDisplayInfo() {
-        return "Packet";
     }
 }
